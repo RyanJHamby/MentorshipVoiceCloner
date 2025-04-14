@@ -1,5 +1,6 @@
 import json
 import os
+import base64
 import requests
 from dotenv import load_dotenv
 
@@ -8,13 +9,27 @@ load_dotenv()
 ELEVENLABS_API_KEY = os.getenv('ELEVENLABS_API_KEY')
 ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1"
 
+def create_response(status_code, body, is_error=False):
+    return {
+        'statusCode': status_code,
+        'headers': {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': 'http://localhost:5173',
+            'Access-Control-Allow-Headers': '*',
+            'Access-Control-Allow-Methods': 'OPTIONS,POST',
+            'Access-Control-Allow-Credentials': 'true'
+        },
+        'body': json.dumps({'error': body} if is_error else body)
+    }
+
 def handler(event, context):
+    # Handle OPTIONS request for CORS preflight
+    if event['httpMethod'] == 'OPTIONS':
+        return create_response(200, {'message': 'OK'})
+
     # Only allow POST requests
     if event['httpMethod'] != 'POST':
-        return {
-            'statusCode': 405,
-            'body': json.dumps({'error': 'Method not allowed'})
-        }
+        return create_response(405, 'Method not allowed', True)
 
     try:
         # Parse the request body
@@ -23,15 +38,17 @@ def handler(event, context):
         voice_name = body.get('voice_name', 'My Voice Clone')
         
         if not voice_samples:
-            return {
-                'statusCode': 400,
-                'body': json.dumps({'error': 'No voice samples provided'})
-            }
+            return create_response(400, 'No voice samples provided', True)
 
         # Prepare the files for upload
         files = []
         for i, sample in enumerate(voice_samples):
-            files.append(('files', (f'sample_{i}.wav', sample, 'audio/wav')))
+            # Convert base64 string to bytes
+            try:
+                sample_bytes = base64.b64decode(sample)
+                files.append(('files', (f'sample_{i}.wav', sample_bytes, 'audio/wav')))
+            except Exception as e:
+                return create_response(400, f'Invalid voice sample format: {str(e)}', True)
 
         # Add voice name
         data = {
@@ -52,23 +69,17 @@ def handler(event, context):
         )
 
         if response.status_code != 200:
-            return {
-                'statusCode': response.status_code,
-                'body': json.dumps({'error': response.text})
-            }
+            return create_response(response.status_code, response.text, True)
 
-        # Return the voice ID and details
-        return {
-            'statusCode': 200,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            },
-            'body': response.text
-        }
+        # Parse the response to get just the voice ID
+        try:
+            response_data = response.json()
+            voice_id = response_data.get('voice_id')
+            if not voice_id:
+                return create_response(500, 'No voice ID in response', True)
+            return create_response(200, {'voice_id': voice_id})
+        except Exception as e:
+            return create_response(500, f'Error parsing response: {str(e)}', True)
 
     except Exception as e:
-        return {
-            'statusCode': 500,
-            'body': json.dumps({'error': str(e)})
-        }
+        return create_response(500, str(e), True)

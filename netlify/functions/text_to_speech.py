@@ -2,6 +2,7 @@ import json
 import os
 import requests
 import random
+import base64
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,13 +19,27 @@ MOTIVATIONAL_QUOTES = [
     "Everything you've ever wanted is on the other side of fear."
 ]
 
+def create_response(status_code, body, is_error=False):
+    return {
+        'statusCode': status_code,
+        'headers': {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': 'http://localhost:5173',
+            'Access-Control-Allow-Headers': '*',
+            'Access-Control-Allow-Methods': 'OPTIONS,POST',
+            'Access-Control-Allow-Credentials': 'true'
+        },
+        'body': json.dumps({'error': body} if is_error else body)
+    }
+
 def handler(event, context):
+    # Handle OPTIONS request for CORS preflight
+    if event['httpMethod'] == 'OPTIONS':
+        return create_response(200, {'message': 'OK'})
+
     # Only allow POST requests
     if event['httpMethod'] != 'POST':
-        return {
-            'statusCode': 405,
-            'body': json.dumps({'error': 'Method not allowed'})
-        }
+        return create_response(405, 'Method not allowed', True)
 
     try:
         # Parse the request body
@@ -35,10 +50,7 @@ def handler(event, context):
         quote_position = body.get('quote_position', 'start')  # 'start' or 'end'
 
         if not text or not voice_id:
-            return {
-                'statusCode': 400,
-                'body': json.dumps({'error': 'Text and voice_id are required'})
-            }
+            return create_response(400, 'Text and voice_id are required', True)
 
         # Add motivational quote if requested
         if include_quote:
@@ -64,36 +76,35 @@ def handler(event, context):
         }
 
         # Make request to ElevenLabs API
-        response = requests.post(
-            f"{ELEVENLABS_API_URL}/text-to-speech/{voice_id}",
-            headers=headers,
-            json=data
-        )
+        try:
+            response = requests.post(
+                f"{ELEVENLABS_API_URL}/text-to-speech/{voice_id}",
+                headers=headers,
+                json=data,
+                timeout=30  # Add timeout to prevent hanging
+            )
 
-        if response.status_code != 200:
-            return {
-                'statusCode': response.status_code,
-                'body': json.dumps({'error': response.text})
-            }
+            if response.status_code != 200:
+                return create_response(
+                    response.status_code,
+                    f'ElevenLabs API error: {response.text}',
+                    True
+                )
 
-        # Return the audio content as base64
-        import base64
-        audio_base64 = base64.b64encode(response.content).decode('utf-8')
+            # Return the audio content as base64
+            audio_base64 = base64.b64encode(response.content).decode('utf-8')
 
-        return {
-            'statusCode': 200,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            },
-            'body': json.dumps({
+            return create_response(200, {
                 'audio': audio_base64,
                 'text': text  # Return the text with quote if it was added
             })
-        }
+
+        except requests.exceptions.RequestException as e:
+            return create_response(
+                500,
+                f'Error communicating with ElevenLabs API: {str(e)}',
+                True
+            )
 
     except Exception as e:
-        return {
-            'statusCode': 500,
-            'body': json.dumps({'error': str(e)})
-        }
+        return create_response(500, str(e), True)

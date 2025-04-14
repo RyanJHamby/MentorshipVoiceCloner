@@ -59,9 +59,13 @@ const VoiceRecorder = ({ onVoiceCreated }) => {
       // Convert blobs to base64
       const base64Recordings = await Promise.all(
         recordings.map(async (recording) => {
-          const reader = new FileReader();
-          return new Promise((resolve) => {
-            reader.onloadend = () => resolve(reader.result.split(',')[1]);
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const base64String = reader.result.split(',')[1];
+              resolve(base64String);
+            };
+            reader.onerror = () => reject(reader.error);
             reader.readAsDataURL(recording.blob);
           });
         })
@@ -70,17 +74,26 @@ const VoiceRecorder = ({ onVoiceCreated }) => {
       const response = await axios.post('http://localhost:9999/.netlify/functions/clone_voice', {
         voice_name: voiceName,
         voice_samples: base64Recordings
+      }, {
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        withCredentials: true
       });
+
 
       if (response.data && response.data.voice_id) {
         onVoiceCreated(response.data.voice_id);
         alert('Voice successfully created!');
         setRecordings([]);
         setVoiceName('');
+      } else {
+        throw new Error('No voice ID received from server');
       }
     } catch (error) {
       console.error('Error uploading recordings:', error);
-      alert('Error creating voice. Please try again.');
+      const errorMessage = error.response?.data?.error || error.message || 'Unknown error';
+      alert(`Error creating voice: ${errorMessage}`);
     }
     setIsUploading(false);
   };

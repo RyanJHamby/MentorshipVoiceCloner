@@ -27,7 +27,13 @@ const TextToSpeech = ({ voiceId }) => {
         voice_id: voiceId,
         include_quote: includeQuote,
         quote_position: quotePosition
+      }, {
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        withCredentials: true
       });
+
 
       if (response.data && response.data.audio) {
         // Convert base64 to blob
