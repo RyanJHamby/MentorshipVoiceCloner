@@ -4,11 +4,13 @@
   functions = "netlify/functions"
 
 [dev]
-  command = "npm run dev"
-  targetPort = 5173
+  command = "echo 'Functions only mode'"
   port = 8888
-  publish = "frontend/dist"
   framework = "#custom"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
 
 [[redirects]]
   from = "/*"
