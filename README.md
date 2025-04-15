@@ -2,6 +2,8 @@
 
 A motivational text-to-speech app that clones your voice and delivers custom mentorship messages with a personal touch.
 
+![MentorVoice Logo](MentorshipVoiceCloner.png)
+
 ## 🧠 What It Does
 
 **MentorVoice** allows users to:
